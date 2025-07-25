@@ -9,7 +9,7 @@
 
 --extra-index-url https://download.pytorch.org/whl/cu121      # extra index for CUDA‑12.1 wheels
 
-torch==2.5.1+cu121            # per SAM‑2 INSTALL.md (PyTorch ≥ 2.5.1)  :contentReference[oaicite:0]{index=0}
+torch==2.5.1+cu121            # per SAM‑2 INSTALL.md (PyTorch ≥ 2.5.1)  
 torchvision==0.20.1+cu121     # must match the Torch major/minor pair
 
 ###############################################################################
