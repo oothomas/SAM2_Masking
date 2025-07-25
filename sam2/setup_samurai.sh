@@ -36,7 +36,9 @@ if [[ -d "${SCRIPT_DIR}/.git" ]]; then
   git -C "$SCRIPT_DIR" pull --ff-only
 else
   echo "➤ Cloning SAMURAI repository into sam2/ ..."
-  rm -rf "${SCRIPT_DIR:?}/"*  # remove placeholder files, keep the script itself
+  SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+  # remove any placeholder files while keeping this setup script intact
+  find "${SCRIPT_DIR}" -mindepth 1 ! -name "$SCRIPT_NAME" -exec rm -rf {} +
   git clone --depth 1 "$SAMURAI_REMOTE" "$SCRIPT_DIR"
   echo "✔ SAMURAI source ready."
 fi
