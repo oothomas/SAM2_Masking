@@ -7,7 +7,7 @@ name = "sam2-masking"
 version = "0.1.0"
 description = "SAM-2 / SAMURAI video masking CLI"
 readme = "Readme.md"
-license = {file = "LICENSE"}
+license = "MIT"
 requires-python = ">=3.9"
 authors = [{name = "Oshane"}]
 
