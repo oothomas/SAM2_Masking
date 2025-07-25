@@ -26,3 +26,6 @@ dependencies = [
 
 [project.scripts]
 sam2-masking = "sam2_masking.cli:main"
+
+[tool.setuptools]
+packages = ["sam2_masking"]
