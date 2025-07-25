@@ -1,26 +1,25 @@
 # 🎬 SAM‑2 / SAMURAI Video‑Masking Pipeline
-_A zero‑shot CLI for turning raw video into photogrammetry‑ready image sets_
+_A zero‑shot CLI that converts raw video into photogrammetry‑ready image sets_
 
 ---
 
 ## 1 Why does this exist?
 Building a 3‑D model from **video** usually starts with a slog:
 
-1. Extract every frame.
-2. Mask your object by hand.
-3. Rename files and inject camera EXIF so WebODM/RealityCapture will accept them.
+1. Extract every frame  
+2. Mask each frame by hand  
+3. Rename files and inject camera EXIF so WebODM / RealityCapture will accept them  
 
 This repo turns that entire workflow into **one command** by wrapping
-Meta AI’s state‑of‑the‑art video segmenter
-**SAMURAI (SAM‑2)** with a lightweight Python CLI.
+Meta AI’s state‑of‑the‑art video segmenter **SAMURAI (SAM‑2)** with a lean Python CLI.
 
 > **Result**  
 > Draw _one_ box → receive three tidy folders:
 >
 > ```
 > original/   # untouched RGB JPEGs
-> masked/     # foreground‑only RGB + *_mask.jpg (binary)
-> keyframes/  # optional (if enabled)
+> masked/     # background‑removed RGB + *_mask.jpg (binary)
+> keyframes/  # optional, if you enable key‑frame extraction
 > ```
 
 ---
@@ -29,19 +28,20 @@ Meta AI’s state‑of‑the‑art video segmenter
 | Component | Role | Links |
 |-----------|------|-------|
 | **SAM‑2** | Extends Segment‑Anything from images to spatio‑temporal video masks | <https://github.com/facebookresearch/sam2> |
-| **SAMURAI** | Pretrained weights + hierarchical decoder built on SAM‑2 | <https://yangchris11.github.io/samurai/> |
+| **SAMURAI** | Official implementation + pretrained weights built on SAM‑2 | <https://github.com/yangchris11/samurai> |
 
-Our pipeline downloads SAMURAI checkpoints and drives them
-directly—no need to juggle multiple demos.
+The pipeline **embeds the full SAMURAI repo** under `sam2/`, which already
+vendors the `sam2/` Python package that your imports rely on—no need to juggle
+two separate check‑outs.
 
 ---
 
 ## 3 Key features
-* **Codec‑agnostic input** – auto‑converts `.mov` → `.mp4` if needed  
-* **Single‑click ROI** – select a bounding box on the first frame, then relax  
+* **Codec‑agnostic input** – auto‑converts `.mov` → `.mp4` if needed  
+* **Single‑click ROI** – draw a bounding box on the first frame, then relax  
 * **Zero‑shot multi‑object tracking** – SAMURAI propagates masks frame‑by‑frame  
 * **Photogrammetry‑friendly export**
-  * `original/` – raw JPEGs with focal length, 35 mm eq., make/model in EXIF  
+  * `original/` – raw JPEGs with focal length, 35 mm eq., make/model in EXIF  
   * `masked/`  – background‑removed JPEG + binary mask  
 * **Optional key‑frame pickers** – Laplacian variance or ORB matcher  
 * **Pure CLI** – no Jupyter dependencies  
@@ -52,35 +52,32 @@ directly—no need to juggle multiple demos.
 ## 4 Quick start
 
 ```bash
-# Clone and pull the SAMURAI submodule
+# 1 Clone this repo
 git clone https://github.com/<you>/sam2-masking-pipeline.git
 cd sam2-masking-pipeline
-git submodule update --init --recursive   # brings facebookresearch/sam2 into ./sam2
 
-# Create an isolated Python env (3.9 – 3.11)
+# 2 Bootstrap SAMURAI source + checkpoints (default = large model)
+bash sam2/setup_samurai.sh               # or bash sam2/setup_samurai.sh small
+
+# 3 Create an isolated Python env (3.9 – 3.11)
 conda create -n sam2 python=3.10 -y
 conda activate sam2
 
-# Install PyTorch that matches your GPU – example: CUDA 11.8
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# 4 Install PyTorch that matches your GPU – example: CUDA 12.1
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
-# Remaining dependencies
+# 5 Other Python deps
 pip install -r requirements.txt
 
-# Download a SAMURAI checkpoint (~2 GB) into ./checkpoints/
-mkdir -p checkpoints
-wget -O checkpoints/sam2.1_hiera_large.pt \
-     https://dl.fbaipublicfiles.com/samurai/models/sam2.1_hiera_large.pt
-
-# Run 🎉
+# 6 Run 🎉
 python -m sam2_masking \
        --video /path/to/MyScan.mov \
        --checkpoint checkpoints/sam2.1_hiera_large.pt \
        --device cuda:0
 ```
 
-A window will appear—draw a tight box around the object.  
-When the progress bar completes you will find:
+A window appears—draw a tight box around the object.  
+When the progress bar finishes you will find:
 
 ```
 MyScan/
@@ -96,10 +93,11 @@ MyScan/
 | Item | Linux / macOS | Windows |
 |------|---------------|---------|
 | **System packages** | `sudo apt install ffmpeg mediainfo libgl1` | `choco install ffmpeg mediainfo` |
-| **GPU drivers** | NVIDIA 535 + for CUDA 11.8 | Same |
+| **GPU drivers** | NVIDIA 535 + for CUDA 12.1 wheels | same |
 | **Python** | 3.9 – 3.11 via conda/pyenv | Miniconda recommended |
 
-> **CPU‑only?** Use `pip install torch==2.2.*` (no CUDA wheel) and run with `--device cpu`.
+> **CPU‑only?** Install the CPU wheels:  
+> `pip install torch==2.5.* torchvision==0.20.*` and run with `--device cpu`.
 
 ---
 
@@ -109,14 +107,14 @@ MyScan/
 python -m sam2_masking --video <file> [options]
 
 Required
-  --video PATH            .mov / .mp4 input
+  --video PATH            .mov / .mp4 file
 
 Common options
-  --checkpoint PATH       SAMURAI weight file (default: checkpoints/*large.pt)
+  --checkpoint PATH       Path to a SAMURAI weight file
   --device cuda:0|cpu     Compute device
   --no-convert            Skip the automatic MOV→MP4 step
 
-For full list:
+For the full list:
   python -m sam2_masking --help
 ```
 
@@ -129,19 +127,19 @@ sam2_masking/           # installable Python package
   ├─ core.py            # processing logic
   └─ cli.py             # entry‑point (python -m sam2_masking)
 
-sam2/                   # SAM‑2 source (git submodule)
-checkpoints/            # large .pt files – ignored by git
+sam2/                   # full SAMURAI repo (includes the sam2 package)
+checkpoints/            # large .pt weight files – ignored by git
 docs/                   # demo GIFs / screenshots (optional)
 ```
 
 ---
 
 ## 8 Extending the pipeline
-* **Multiple objects:** call `predictor.add_new_points_or_box()` per instance.  
-* **Key‑frames:** import `laplacian_stats` or `detect_keyframes` from
-  `sam2_masking.core` and bolt them into your script.  
-* **Fine‑tuning:** drop in your own checkpoint; config is inferred from
-  filename suffix (`*_large.pt`, `*_base_plus.pt`, etc.).
+* **Multiple objects** – call `predictor.add_new_points_or_box()` per instance.  
+* **Key‑frames** – import `laplacian_stats` or `detect_keyframes`
+  from `sam2_masking.core` and bolt them into your script.  
+* **Fine‑tuning** – drop in your own checkpoint; config is inferred from
+  the filename suffix (`*_large.pt`, `*_base_plus.pt`, etc.).
 
 ---
 
@@ -150,7 +148,7 @@ docs/                   # demo GIFs / screenshots (optional)
 | Question | Answer |
 |----------|--------|
 | Does audio survive the MOV→MP4 step? | No—OpenCV writes video‑only. |
-| How big is the “large” checkpoint? | ≈ 2 GB (base ≈ 600 MB, tiny ≈ 250 MB). |
+| How big is the “large” checkpoint? | ≈ 2 GB (base ≈ 600 MB, tiny ≈ 250 MB). |
 | RTX 20‑series support? | Yes; FP16 needs compute 7.0+. Otherwise use `--device cpu`. |
 | Official Meta support? | No—community wrapper. SAM‑2 & SAMURAI are © Meta AI. |
 
@@ -164,7 +162,7 @@ If this tool aids your research, please cite SAM‑2 / SAMURAI:
 @inproceedings{kirillov2025sam2,
   title     = {Segment Anything in Video},
   author    = {Kirillov, A. and He, K. and others},
-  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  booktitle = {Proc. CVPR},
   year      = {2025}
 }
 ```
@@ -173,7 +171,7 @@ If this tool aids your research, please cite SAM‑2 / SAMURAI:
 
 ## 11 License
 * **Wrapper code:** MIT  
-* **SAM‑2 submodule:** Apache 2.0  
+* **SAMURAI (sam2/) source:** Apache 2.0  
 * **Model checkpoints:** see SAMURAI licence
 
 Enjoy painless video masking! 🚀
