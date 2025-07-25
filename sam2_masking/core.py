@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 from typing import Dict, List, Tuple
 from contextlib import nullcontext
+from concurrent.futures import ProcessPoolExecutor
 
 import torch
 from tqdm import tqdm
@@ -19,6 +20,8 @@ from PIL import Image
 # -----------------------------------------------------------------------------
 # Video helpers
 # -----------------------------------------------------------------------------
+
+
 def convert_mov_to_mp4(mov_path: str, mp4_path: str | None = None) -> str:
     """Convert .mov -> .mp4 using OpenCV (video only, no audio)."""
     if mp4_path is None:
@@ -29,8 +32,8 @@ def convert_mov_to_mp4(mov_path: str, mp4_path: str | None = None) -> str:
     if not cap.isOpened():
         raise RuntimeError(f"Could not open: {mov_path}")
 
-    fps    = cap.get(cv2.CAP_PROP_FPS)
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     out = cv2.VideoWriter(
@@ -66,8 +69,11 @@ def load_video_frames(path: str) -> List[np.ndarray]:
     return frames
 
 
-def select_roi_on_first_frame(frame: np.ndarray,
-                              max_w=800, max_h=600) -> Tuple[int, int, int, int]:
+def select_roi_on_first_frame(
+    frame: np.ndarray,
+    max_w: int = 800,
+    max_h: int = 600,
+) -> Tuple[int, int, int, int]:
     """Interactively pick an ROI (`cv2.selectROI`)."""
     h, w = frame.shape[:2]
     s = min(max_w / w, max_h / h, 1.0)
@@ -79,6 +85,8 @@ def select_roi_on_first_frame(frame: np.ndarray,
 
 # -----------------------------------------------------------------------------
 # SAMURAI wrapper
+
+
 # -----------------------------------------------------------------------------
 def _determine_cfg(checkpoint: str) -> str:
     if "large" in checkpoint:
@@ -127,6 +135,8 @@ def run_tracking(video_path: str,
 # -----------------------------------------------------------------------------
 # EXIF & export helpers
 # -----------------------------------------------------------------------------
+
+
 def _embed_exif(jpg_path: str,
                 focal_mm: float | None,
                 focal35: int | None,
@@ -148,19 +158,26 @@ def _embed_exif(jpg_path: str,
 
 def _metadata_from_video(path: str):
     focal_mm = focal35 = None
-    make = "Apple"; model = "iPhone"
+    make = "Apple"
+    model = "iPhone"
     mi = MediaInfo.parse(path)
     for t in mi.tracks:
         if t.track_type != "Video":
             continue
         if t.focal_length:
-            try: focal_mm = float(t.focal_length)
-            except Exception: pass
+            try:
+                focal_mm = float(t.focal_length)
+            except Exception:
+                pass
         if t.focal_length_in_35mm_format:
-            try: focal35 = int(t.focal_length_in_35mm_format)
-            except Exception: pass
-        if t.make:  make  = t.make
-        if t.model: model = t.model
+            try:
+                focal35 = int(t.focal_length_in_35mm_format)
+            except Exception:
+                pass
+        if t.make:
+            make = t.make
+        if t.model:
+            model = t.model
         break
     return focal_mm, focal35, make, model
 
@@ -170,10 +187,10 @@ def save_processed(video_path: str,
                    masks: Dict[int, List[torch.Tensor]]):
     """Dump original / masked frames + binary masks to disk."""
     stem = osp.splitext(osp.basename(video_path))[0]
-    out_dir      = osp.join(osp.dirname(video_path), stem)
-    orig_outdir  = osp.join(out_dir, "original")
+    out_dir = osp.join(osp.dirname(video_path), stem)
+    orig_outdir = osp.join(out_dir, "original")
     masked_outdir = osp.join(out_dir, "masked")
-    os.makedirs(orig_outdir,  exist_ok=True)
+    os.makedirs(orig_outdir, exist_ok=True)
     os.makedirs(masked_outdir, exist_ok=True)
 
     focal_mm, focal35, make, model = _metadata_from_video(video_path)
@@ -202,10 +219,10 @@ def save_processed(video_path: str,
 
     print(f"✔ Processed frames saved to: {out_dir}")
 
+
 # -----------------------------------------------------------------------------
 # Key‑frame selection utilities (same as prototype)
 # -----------------------------------------------------------------------------
-from concurrent.futures import ProcessPoolExecutor
 
 def _lap_var(idx_frame):
     idx, f = idx_frame
@@ -227,31 +244,42 @@ def laplacian_stats(frames: List[np.ndarray],
 
 
 def select_frames(idxs, vars_, thresh=100., min_gap=5):
-    chosen = []; last = -1_000
+    chosen = []
+    last = -1_000
     for i, v in zip(idxs, vars_):
-        if v < thresh:           continue
-        if i - last < min_gap:   continue
-        chosen.append(i); last = i
+        if v < thresh:
+            continue
+        if i - last < min_gap:
+            continue
+        chosen.append(i)
+        last = i
     return chosen
 
 
 def detect_keyframes(frames, masks, ratio=0.8):
     """ORB/BFMatcher‑based key‑frame detection (prototype logic)."""
-    if not frames: return [], []
+    if not frames:
+        return [], []
+
     def _mask(idx):
         if idx in masks and masks[idx]:
-            m = (masks[idx][0].cpu().numpy()[0] > 0.5).astype(np.uint8)
-        else:
-            m = np.zeros(frames[0].shape[:2], np.uint8)
-        return m
-    orb = cv2.ORB_create(); bf = cv2.BFMatcher(cv2.NORM_HAMMING, True)
+            return (masks[idx][0].cpu().numpy()[0] > 0.5).astype(np.uint8)
+        return np.zeros(frames[0].shape[:2], np.uint8)
+
+    orb = cv2.ORB_create()
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, True)
     kf, kidx = [frames[0]], [0]
     ref_kp, ref_des = orb.detectAndCompute(frames[0], _mask(0))
     for idx, fr in enumerate(frames[1:], 1):
         kp, des = orb.detectAndCompute(fr, _mask(idx))
         if not (ref_des is not None and des is not None and ref_kp):
-            kf.append(fr); kidx.append(idx); ref_kp, ref_des = kp, des; continue
+            kf.append(fr)
+            kidx.append(idx)
+            ref_kp, ref_des = kp, des
+            continue
         matches = bf.match(ref_des, des)
         if len(matches) / len(ref_kp) < ratio:
-            kf.append(fr); kidx.append(idx); ref_kp, ref_des = kp, des
+            kf.append(fr)
+            kidx.append(idx)
+            ref_kp, ref_des = kp, des
     return kf, kidx

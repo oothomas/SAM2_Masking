@@ -10,15 +10,20 @@ $ python -m sam2_masking \
 """
 
 import argparse
-import os
-import os.path as osp
 import sys
 
-import cv2
 import torch
 
-from .core import (convert_mov_to_mp4, load_video_frames, select_roi_on_first_frame,
-                   build_samurai, run_tracking, save_processed)
+from .core import (
+    convert_mov_to_mp4,
+    load_video_frames,
+    select_roi_on_first_frame,
+    build_samurai,
+    run_tracking,
+    save_processed,
+
+)
+
 
 def parse_args():
     p = argparse.ArgumentParser(description="SAM‑2 SAMURAI masking pipeline")
@@ -30,6 +35,7 @@ def parse_args():
     p.add_argument("--no-convert", action="store_true",
                    help="Skip .mov -> .mp4 conversion even if input is .mov")
     return p.parse_args()
+
 
 def main():
     args = parse_args()
@@ -58,6 +64,7 @@ def main():
     save_processed(args.video, frames, masks)
 
     print("🎉 Done!")
+
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn", force=True)
