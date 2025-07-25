@@ -47,6 +47,7 @@ def main():
         in_path = convert_mov_to_mp4(in_path)
 
     # 2. Frame buffer
+    # Add status updates
     frames = load_video_frames(in_path)
     print(f"Loaded {len(frames)} frames from {in_path}")
 
