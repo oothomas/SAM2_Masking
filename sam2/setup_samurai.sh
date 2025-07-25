@@ -1,25 +1,19 @@
 #!/usr/bin/env bash
 #-----------------------------------------------------------------------------
-# setup_samurai.sh – bootstrap script for SAMURAI + checkpoints
+# setup_samurai.sh  –  one-shot bootstrapper for SAMURAI + checkpoints
 #
-# Place this file in <repo‑root>/sam2/  (yes: same folder you `import sam2` from)
+# Works even when sam2/ already exists and isn’t a git repo.
+# Place this script inside <repo-root>/sam2/ and run:
 #
-# USAGE
-#   cd sam2          # <- the script’s directory
+#   cd sam2
 #   bash setup_samurai.sh [large|base_plus|small|tiny]
 #
-# NOTES
-# • First arg (optional) chooses which SAMURAI checkpoint to download. Default = large.
-# • The script clones *yangchris11/samurai* (not just facebookresearch/sam2).
-#   That repo already contains a vendor‑copied `sam2/` Python package that
-#   exposes `build_sam2_video_predictor`, so your existing imports keep working.
-# • Requires: git, curl (or wget), and—if you plan to use GPU—the NVIDIA driver
-#   that matches the CUDA wheels you install (≥ 535 for CUDA 12.1).
+# Requirements: git, curl (or wget). CUDA ≥ 12.1 driver if you’ll use GPU wheels.
 #-----------------------------------------------------------------------------
 set -euo pipefail
 
 ###############################################################################
-# 0. Resolve paths
+# 0. Resolve paths
 ###############################################################################
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 REPO_ROOT="$( dirname "$SCRIPT_DIR" )"
@@ -27,24 +21,31 @@ CHECKPOINT_DIR="${REPO_ROOT}/checkpoints"
 mkdir -p "${CHECKPOINT_DIR}"
 
 ###############################################################################
-# 1. Clone / update SAMURAI (which includes SAM‑2) into *this* sam2/ folder
+# 1. Sync SAMURAI (includes SAM-2) into *this* sam2/ folder
 ###############################################################################
 SAMURAI_REMOTE="https://github.com/yangchris11/samurai.git"
+SCRIPT_NAME="$( basename "${BASH_SOURCE[0]}" )"
 
-if [[ -d "${SCRIPT_DIR}/.git" ]]; then
-  echo "➤ Updating existing SAMURAI clone inside sam2/ ..."
-  git -C "$SCRIPT_DIR" pull --ff-only
-else
-  echo "➤ Cloning SAMURAI repository into sam2/ ..."
-  SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-  # remove any placeholder files while keeping this setup script intact
-  find "${SCRIPT_DIR}" -mindepth 1 ! -name "$SCRIPT_NAME" -exec rm -rf {} +
-  git clone --depth 1 "$SAMURAI_REMOTE" "$SCRIPT_DIR"
-  echo "✔ SAMURAI source ready."
-fi
+sync_repo () {
+  if [[ -d "${SCRIPT_DIR}/.git" ]]; then
+    echo "➤ Updating existing SAMURAI git repo ..."
+    git -C "$SCRIPT_DIR" pull --ff-only
+  else
+    echo "➤ sam2/ isn’t a git repo – cloning fresh source ..."
+    TMP_DIR="$(mktemp -d)"
+    git clone --depth 1 "$SAMURAI_REMOTE" "$TMP_DIR"
+    echo "➤ Syncing source into sam2/ (overwriting everything except this script) ..."
+    rsync -a --delete \
+          --exclude "$SCRIPT_NAME" \
+          "$TMP_DIR/" "$SCRIPT_DIR/"
+    rm -rf "$TMP_DIR"
+    echo "✔ SAMURAI source ready."
+  fi
+}
+sync_repo
 
 ###############################################################################
-# 2. Download the requested checkpoint
+# 2. Download the requested checkpoint
 ###############################################################################
 MODEL_SIZE="${1:-large}"   # default = large
 declare -A URLS=(
@@ -54,10 +55,10 @@ declare -A URLS=(
   [tiny]="https://dl.fbaipublicfiles.com/samurai/models/sam2.1_hiera_t.pt"
 )
 
-if [[ -z "${URLS[$MODEL_SIZE]:-}" ]]; then
+[[ -n "${URLS[$MODEL_SIZE]:-}" ]] || {
   echo "✖ Unknown model size \"$MODEL_SIZE\". Choose: large | base_plus | small | tiny"
   exit 1
-fi
+}
 
 FILE="sam2.1_hiera_${MODEL_SIZE}.pt"
 DEST="${CHECKPOINT_DIR}/${FILE}"
@@ -69,7 +70,16 @@ else
   curl -L "${URLS[$MODEL_SIZE]}" -o "$DEST"
 fi
 
-echo -e "\n✅  Setup complete."
-echo "   • SAMURAI + SAM‑2 source lives in: sam2/"
-echo "   • Model weights           in: checkpoints/${FILE}"
-echo "   • You can now run:  python -m sam2_masking --video <file> --checkpoint checkpoints/${FILE}"
+###############################################################################
+# 3. Done
+###############################################################################
+cat <<EOF
+
+✅  Setup complete.
+   • SAMURAI + SAM-2 source: sam2/
+   • Model weights        : checkpoints/${FILE}
+
+Run:
+   python -m sam2_masking --video <your_video.mp4> --checkpoint checkpoints/${FILE}
+
+EOF
