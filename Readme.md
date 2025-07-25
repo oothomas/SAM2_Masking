@@ -125,7 +125,8 @@ For the full list:
 ```
 sam2_masking/           # installable Python package
   ├─ core.py            # processing logic
-  └─ cli.py             # entry‑point (python -m sam2_masking)
+  ├─ cli.py             # CLI helpers
+  └─ __main__.py        # entry point for `python -m sam2_masking`
 
 sam2/                   # full SAMURAI repo (includes the sam2 package)
 checkpoints/            # large .pt weight files – ignored by git
