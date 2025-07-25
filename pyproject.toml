@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sam2-masking"
+version = "0.1.0"
+description = "SAM-2 / SAMURAI video masking CLI"
+readme = "Readme.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.9"
+authors = [{name = "Oshane"}]
+
+# runtime dependencies
+dependencies = [
+    "torch>=2.5.1",
+    "torchvision>=0.20.1",
+    "opencv-python>=4.8.1",
+    "matplotlib>=3.8",
+    "numpy>=1.24",
+    "tqdm>=4.66",
+    "pymediainfo>=6.1",
+    "piexif>=1.1.3",
+    "Pillow>=10.0"
+]
+
+[project.scripts]
+sam2-masking = "sam2_masking.cli:main"
