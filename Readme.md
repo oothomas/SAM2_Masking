@@ -30,9 +30,10 @@ Meta AI’s state‑of‑the‑art video segmenter **SAMURAI (SAM‑2)** with 
 | **SAM‑2** | Extends Segment‑Anything from images to spatio‑temporal video masks | <https://github.com/facebookresearch/sam2> |
 | **SAMURAI** | Official implementation + pretrained weights built on SAM‑2 | <https://github.com/yangchris11/samurai> |
 
-The pipeline **embeds the full SAMURAI repo** under `sam2/`, which already
-vendors the `sam2/` Python package that your imports rely on—no need to juggle
-two separate check‑outs.
+The script `sam2/setup_samurai.sh` clones the full SAMURAI repository into
+`sam2/`. This repo already vendors the `sam2/` Python package that your imports
+rely on—so after running the setup script you don’t need to juggle two separate
+check‑outs.
 
 ---
 
@@ -57,6 +58,7 @@ git clone https://github.com/<you>/sam2-masking-pipeline.git
 cd sam2-masking-pipeline
 
 # 2 Bootstrap SAMURAI source + checkpoints (default = large model)
+#    (clones the SAMURAI repo into sam2/ if needed)
 bash sam2/setup_samurai.sh               # or bash sam2/setup_samurai.sh small
 
 # 3 Create an isolated Python env (3.9 – 3.11)
@@ -127,7 +129,8 @@ sam2_masking/           # installable Python package
   ├─ core.py            # processing logic
   └─ cli.py             # entry‑point (python -m sam2_masking)
 
-sam2/                   # full SAMURAI repo (includes the sam2 package)
+sam2/                   # SAMURAI repository cloned by setup_samurai.sh
+                        # (includes the sam2 package)
 checkpoints/            # large .pt weight files – ignored by git
 docs/                   # demo GIFs / screenshots (optional)
 ```
