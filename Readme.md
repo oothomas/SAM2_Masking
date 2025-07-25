@@ -154,7 +154,7 @@ docs/                   # demo GIFs / screenshots (optional)
 
 ---
 
-## 10 Cite us
+## 10 Cite SAM2 and SAMURAI
 
 If this tool aids your research, please cite SAM‑2 / SAMURAI:
 
