@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+.env
+.venv
+*.egg-info/
+
+# Jupyter / VS Code
+.ipynb_checkpoints/
+.vscode/
+
+# Data & artefacts
+checkpoints/
+*.mp4
+*.mov
+*.jpg
+*.png
+*.avi
+
+# OS cruft
+.DS_Store
+Thumbs.db
