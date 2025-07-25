@@ -52,7 +52,7 @@ def main():
     predictor = build_samurai(args.checkpoint, args.device)
 
     # 5. Tracking
-    masks = run_tracking(in_path, bbox, predictor, len(frames))
+    masks = run_tracking(in_path, bbox, predictor, len(frames), args.device)
 
     # 6. Export (original + masked + binary masks)
     save_processed(args.video, frames, masks)

@@ -8,6 +8,7 @@ import os.path as osp
 import cv2
 import numpy as np
 from typing import Dict, List, Tuple
+from contextlib import nullcontext
 
 import torch
 from tqdm import tqdm
@@ -102,10 +103,13 @@ def build_samurai(checkpoint="checkpoints/sam2.1_hiera_large.pt",
 def run_tracking(video_path: str,
                  bbox: Tuple[int, int, int, int],
                  predictor,
-                 n_frames: int) -> Dict[int, List[torch.Tensor]]:
+                 n_frames: int,
+                 device: str = "cuda") -> Dict[int, List[torch.Tensor]]:
     """Zero‑shot tracking. Returns {frame_idx: [mask_tensor, …]}."""
     x, y, w, h = bbox
-    with torch.inference_mode(), torch.autocast("cuda", dtype=torch.float16):
+    autocast_ctx = (torch.autocast("cuda", dtype=torch.float16)
+                    if device.startswith("cuda") else nullcontext())
+    with torch.inference_mode(), autocast_ctx:
         state = predictor.init_state(video_path, offload_video_to_cpu=True)
         predictor.add_new_points_or_box(state,
                                         box=(x, y, x + w, y + h),
