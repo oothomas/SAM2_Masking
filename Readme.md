@@ -30,10 +30,7 @@ Meta AI’s state‑of‑the‑art video segmenter **SAMURAI (SAM‑2)** with 
 | **SAM‑2** | Extends Segment‑Anything from images to spatio‑temporal video masks | <https://github.com/facebookresearch/sam2> |
 | **SAMURAI** | Official implementation + pretrained weights built on SAM‑2 | <https://github.com/yangchris11/samurai> |
 
-The script `sam2/setup_samurai.sh` clones the full SAMURAI repository into
-`sam2/`. This repo already vendors the `sam2/` Python package that your imports
-rely on—so after running the setup script you don’t need to juggle two separate
-check‑outs.
+The script `sam2/setup_samurai.sh` clones and installs the SAMURAI repo, then copies your chosen checkpoint under `checkpoints/`. This repo already vendors the `sam2/` Python package that your imports rely on—so after running the setup script you don’t need to juggle two separate check-outs.
 
 ---
 
@@ -57,15 +54,14 @@ check‑outs.
 git clone https://github.com/<you>/sam2-masking-pipeline.git
 cd sam2-masking-pipeline
 
-# 2 Bootstrap SAMURAI source + checkpoints (default = large model)
-#    (clones the SAMURAI repo into sam2/ if needed)
-bash sam2/setup_samurai.sh               # or bash sam2/setup_samurai.sh small
+# 2 Bootstrap SAMURAI once after cloning
+#    Installs the SAMURAI repo and copies the chosen weight into checkpoints/
+bash sam2/setup_samurai.sh large         # tiny|small|base_plus|large
 
 # 3 Create an isolated Python env (3.9 – 3.11)
 conda create -n sam2 python=3.10 -y
 conda activate sam2
-
-# 4 Install PyTorch that matches your GPU – example: CUDA 12.1
+# 4 Install PyTorch built for your CUDA version (example: CUDA 12.1)
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 # 5 Other Python deps
