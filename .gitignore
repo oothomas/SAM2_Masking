@@ -22,3 +22,4 @@ checkpoints/
 # OS cruft
 .DS_Store
 Thumbs.db
+sam2/
