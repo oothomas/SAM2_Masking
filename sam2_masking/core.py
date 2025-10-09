@@ -7,7 +7,7 @@ import os
 import os.path as osp
 import cv2
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 from contextlib import nullcontext
 from concurrent.futures import ProcessPoolExecutor
 
@@ -437,11 +437,105 @@ def detect_keyframes(frames, masks, ratio=0.8):
     return kf, kidx
 
 
+def compute_laplacian_variances(frames: Sequence[np.ndarray]) -> List[float]:
+    """Return the Laplacian variance of each frame."""
+
+    variances: List[float] = []
+    for frame in frames:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        variances.append(float(cv2.Laplacian(gray, cv2.CV_64F).var()))
+    return variances
+
+
+def choose_quality_threshold_interactively(
+        variances: Sequence[float],
+        frame_indices: Optional[Sequence[int]] = None,
+        initial_threshold: Optional[float] = None) -> float:
+    """Interactive Matplotlib UI to pick a Laplacian variance cutoff."""
+
+    if not variances:
+        raise ValueError("No variances provided for interactive selection")
+
+    if frame_indices is None:
+        frame_indices = list(range(len(variances)))
+
+    min_var = float(min(variances))
+    max_var = float(max(variances))
+    if initial_threshold is None:
+        initial_threshold = float(np.median(variances))
+
+    # Prevent zero-span sliders when all values are identical.
+    if np.isclose(max_var, min_var):
+        max_var = min_var + 1.0
+
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.widgets import Button, Slider
+    except Exception as exc:  # pragma: no cover - UI fallback
+        print("Matplotlib interactive backend is unavailable:", exc)
+        while True:
+            user_input = input(
+                f"Enter Laplacian variance threshold (suggested {initial_threshold:.1f}): "
+            )
+            try:
+                return float(user_input)
+            except ValueError:
+                print("Please type a numeric value.")
+
+    fig, ax = plt.subplots()
+    fig.suptitle("Laplacian variance per frame")
+    ax.plot(frame_indices, variances, marker="o", lw=0.8)
+    ax.set_xlabel("Frame index")
+    ax.set_ylabel("Variance")
+
+    threshold_line = ax.axhline(initial_threshold, color="red", lw=1.5)
+    label = ax.text(
+        0.02,
+        0.95,
+        f"Threshold: {initial_threshold:.1f}",
+        transform=ax.transAxes,
+        va="top",
+        ha="left",
+        color="red",
+        fontsize=10,
+    )
+
+    slider_ax = fig.add_axes([0.1, 0.1, 0.75, 0.03])
+    slider = Slider(
+        slider_ax,
+        "Threshold",
+        min_var,
+        max_var,
+        valinit=initial_threshold,
+    )
+
+    def _update(val):
+        threshold_line.set_ydata([val, val])
+        label.set_text(f"Threshold: {val:.1f}")
+        fig.canvas.draw_idle()
+
+    slider.on_changed(_update)
+
+    confirm_ax = fig.add_axes([0.88, 0.085, 0.1, 0.05])
+    button = Button(confirm_ax, "Confirm")
+    chosen = {"value": initial_threshold}
+
+    def _confirm(event):  # pragma: no cover - UI callback
+        chosen["value"] = float(slider.val)
+        plt.close(fig)
+
+    button.on_clicked(_confirm)
+    plt.show()
+    return chosen["value"]
+
+
 def filter_frames_by_quality(
         frames: List[np.ndarray],
         frame_indices: Optional[List[int]] = None,
         variance_thresh: float = 100.0,
-        min_gap: int = 5) -> Tuple[List[np.ndarray], List[int]]:
+        min_gap: int = 5,
+        precomputed_variances: Optional[Sequence[float]] = None
+) -> Tuple[List[np.ndarray], List[int]]:
     """Keep only frames with sufficient Laplacian variance (low blur).
 
     Parameters
@@ -471,13 +565,18 @@ def filter_frames_by_quality(
     if frame_indices is None:
         frame_indices = list(range(len(frames)))
 
+    if precomputed_variances is not None:
+        if len(precomputed_variances) != len(frames):
+            raise ValueError("precomputed_variances must match the number of frames")
+        variances = [float(v) for v in precomputed_variances]
+    else:
+        variances = compute_laplacian_variances(frames)
+
     kept_frames: List[np.ndarray] = []
     kept_indices: List[int] = []
     last_kept = -1_000
 
-    for frame, original_idx in zip(frames, frame_indices):
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+    for frame, original_idx, variance in zip(frames, frame_indices, variances):
 
         if variance < variance_thresh:
             continue
