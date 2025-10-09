@@ -44,7 +44,7 @@ check‑outs.
 * **Photogrammetry‑friendly export**
   * `original/` – raw JPEGs with focal length, 35 mm eq., make/model in EXIF  
   * `masked/`  – background‑removed JPEG + binary mask  
-* **Optional key‑frame pickers** – Laplacian variance or ORB matcher  
+* **Optional key‑frame pickers** – Laplacian variance (blur filter) or ORB matcher
 * **Pure CLI** – no Jupyter dependencies  
 * **CUDA‑accelerated** – float‑16 inference for fast GPUs (falls back to CPU)
 
@@ -115,6 +115,9 @@ Common options
   --checkpoint PATH       Path to a SAMURAI weight file
   --device cuda:0|cpu     Compute device
   --no-convert            Skip the automatic MOV→MP4 step
+  --keyframe-threshold F  Enable ORB/BFMatcher key-frame thinning
+  --quality-threshold F   Drop blurry frames using Laplacian variance >= F
+  --quality-min-gap N     Require at least N frames between quality-filter hits
 
 For the full list:
   python -m sam2_masking --help
