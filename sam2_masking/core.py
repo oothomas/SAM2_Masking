@@ -17,6 +17,7 @@ from pymediainfo import MediaInfo
 import piexif
 from PIL import Image
 
+
 # -----------------------------------------------------------------------------
 # Video helpers
 # -----------------------------------------------------------------------------
@@ -70,9 +71,9 @@ def load_video_frames(path: str) -> List[np.ndarray]:
 
 
 def select_roi_on_first_frame(
-    frame: np.ndarray,
-    max_w: int = 800,
-    max_h: int = 600,
+        frame: np.ndarray,
+        max_w: int = 800,
+        max_h: int = 600,
 ) -> Tuple[int, int, int, int]:
     """Interactively pick an ROI (`cv2.selectROI`)."""
     h, w = frame.shape[:2]
@@ -82,6 +83,7 @@ def select_roi_on_first_frame(
     cv2.destroyWindow("Select ROI")
     # map back to original resolution
     return int(x / s), int(y / s), int(ww / s), int(hh / s)
+
 
 # -----------------------------------------------------------------------------
 # SAMURAI wrapper
@@ -103,6 +105,15 @@ def _determine_cfg(checkpoint: str) -> str:
 def build_samurai(checkpoint="checkpoints/sam2.1_hiera_large.pt",
                   device="cuda:0"):
     """Returns a ready‑to‑run predictor instance."""
+
+    import os, sys, pathlib
+
+    ROOT = pathlib.Path(__file__).resolve().parent.parent  # repo root
+    SAMURAI_PKG = ROOT / "samurai_src" / "sam2"  # adjust if you renamed
+
+    if SAMURAI_PKG.exists() and str(SAMURAI_PKG) not in sys.path:
+        sys.path.insert(0, str(SAMURAI_PKG))
+
     from sam2.build_sam import build_sam2_video_predictor  # local submodule
     cfg = _determine_cfg(checkpoint)
     return build_sam2_video_predictor(cfg, checkpoint, device=device)
@@ -132,6 +143,7 @@ def run_tracking(video_path: str,
         torch.cuda.empty_cache()
     return masks
 
+
 # -----------------------------------------------------------------------------
 # EXIF & export helpers
 # -----------------------------------------------------------------------------
@@ -155,6 +167,7 @@ def _embed_exif(jpg_path: str,
         exif["Exif"][piexif.ExifIFD.FocalLengthIn35mmFilm] = int(focal35)
     img.save(jpg_path, exif=piexif.dump(exif))
 
+embed_exif_into_jpg = _embed_exif
 
 def _metadata_from_video(path: str):
     focal_mm = focal35 = None
@@ -182,42 +195,136 @@ def _metadata_from_video(path: str):
     return focal_mm, focal35, make, model
 
 
-def save_processed(video_path: str,
-                   orig_frames: List[np.ndarray],
-                   masks: Dict[int, List[torch.Tensor]]):
-    """Dump original / masked frames + binary masks to disk."""
-    stem = osp.splitext(osp.basename(video_path))[0]
-    out_dir = osp.join(osp.dirname(video_path), stem)
-    orig_outdir = osp.join(out_dir, "original")
-    masked_outdir = osp.join(out_dir, "masked")
-    os.makedirs(orig_outdir, exist_ok=True)
-    os.makedirs(masked_outdir, exist_ok=True)
+def save_processed(video_path, frames, all_masks):
+    """
+    Given:
+      - video_path: path to the input .mp4 (or .mov) file.
+      - frames: a list of frames (images in BGR format).
+      - all_masks: a dict mapping frame indices to lists of mask tensors.
+                   We assume each list contains at least one mask; if none, the frame is unmasked.
 
-    focal_mm, focal35, make, model = _metadata_from_video(video_path)
+    This function creates an output folder (named after the video file's stem, in the same directory as the video)
+    with two subfolders:
+      - "original": containing the original frames saved as JPEGs.
+      - "masked": containing both the frames with the background removed (only pixels where the mask==1 are kept)
+                  and the binary masks saved as JPEGs with '_mask' appended to the filename.
 
-    for i, frame in enumerate(orig_frames):
-        name = f"{stem}_{i:06d}.jpg"
-        orig_path = osp.join(orig_outdir, name)
-        cv2.imwrite(orig_path, frame)
-        _embed_exif(orig_path, focal_mm, focal35, make, model)
+    It also attempts to extract EXIF-like metadata from the video via pymediainfo and embed
+    that data into each saved JPEG.
+    """
 
-        # build binary mask (H,W) uint8 0/255
-        m = np.zeros(frame.shape[:2], np.uint8)
-        if i in masks and masks[i]:
-            m = (masks[i][0].cpu().numpy()[0] > 0.5).astype(np.uint8) * 255
+    # 1) Extract metadata from video
+    focal_length = None
+    focal_length_35mm = None
+    make = "Apple"
+    model = "iPhone"
 
-        mask_path = osp.join(masked_outdir, f"{stem}_{i:06d}_mask.jpg")
-        cv2.imwrite(mask_path, m)
-        _embed_exif(mask_path, focal_mm, focal35, make, model)
+    media_info = MediaInfo.parse(video_path)
+    for track in media_info.tracks:
+        if track.track_type == "Video":
+            if track.focal_length:
+                try:
+                    focal_length = float(track.focal_length)
+                except Exception:
+                    pass
+            if track.focal_length_in_35mm_format:
+                try:
+                    focal_length_35mm = int(track.focal_length_in_35mm_format)
+                except Exception:
+                    pass
+            if track.make:
+                make = track.make
+            if track.model:
+                model = track.model
+            break
 
-        # masked RGB
-        masked_rgb = frame.copy()
-        masked_rgb[m == 0] = 0
-        rgb_path = osp.join(masked_outdir, name)
-        cv2.imwrite(rgb_path, masked_rgb)
-        _embed_exif(rgb_path, focal_mm, focal35, make, model)
+    # 2) Determine the video directory and filestem
+    video_dir = os.path.dirname(video_path)
+    video_filename = os.path.basename(video_path)
+    video_stem, _ = os.path.splitext(video_filename)
 
-    print(f"✔ Processed frames saved to: {out_dir}")
+    # 3) Create the output folder (named after the video file's stem) and subfolders:
+    #    "original" for original frames, and "masked" for both masked frames and masks.
+    out_dir = os.path.join(video_dir, video_stem)
+    original_dir = os.path.join(out_dir, "original")
+    masked_dir = os.path.join(out_dir, "masked")
+
+    os.makedirs(original_dir, exist_ok=True)
+    os.makedirs(masked_dir, exist_ok=True)
+
+    # 4) Iterate through frames and save them
+    for idx, frame in enumerate(frames):
+        # Build the base name: e.g. video_stem_000001
+        out_basename = f"{video_stem}_{idx:06d}"
+
+        # ---------------------
+        # (A) Save the original frame
+        # ---------------------
+        orig_filename = os.path.join(original_dir, f"{out_basename}.jpg")
+        cv2.imwrite(orig_filename, frame)
+
+        # Inject EXIF metadata into the original image
+        embed_exif_into_jpg(
+            orig_filename,
+            focal_mm=focal_length,
+            focal35=focal_length_35mm,
+            make=make,
+            model=model
+        )
+
+        # ---------------------
+        # (B) Get or build the mask
+        # ---------------------
+        if idx in all_masks and len(all_masks[idx]) > 0:
+            mask_tensor = all_masks[idx][0]
+            # Convert from PyTorch tensor ([1, H, W]) to a numpy array (H, W)
+            mask_np = mask_tensor.cpu().numpy()[0]
+            # Threshold the mask to create a binary mask (values 0 or 1)
+            binary_mask = (mask_np > 0.5).astype(np.uint8)
+        else:
+            # If no mask exists, create a binary mask filled with zeros
+            binary_mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
+
+        # ---------------------
+        # (C) Save the binary mask and the masked frame in the same folder ("masked")
+        # ---------------------
+
+        # Save the binary mask image (scale 0/1 to 0/255)
+        mask_filename = os.path.join(masked_dir, f"{out_basename}_mask.jpg")
+        mask_to_save = (binary_mask * 255).astype(np.uint8)
+        cv2.imwrite(mask_filename, mask_to_save)
+        embed_exif_into_jpg(
+            mask_filename,
+            focal_mm=focal_length,
+            focal35=focal_length_35mm,
+            make=make,
+            model=model
+        )
+
+        # Create the masked frame: keep only pixels where binary_mask==1, set background to black.
+        binary_mask_3ch = np.stack([binary_mask] * 3, axis=-1)
+        masked_frame = frame * binary_mask_3ch
+
+        # Save the masked frame
+        masked_filename = os.path.join(masked_dir, f"{out_basename}.jpg")
+        cv2.imwrite(masked_filename, masked_frame)
+        embed_exif_into_jpg(
+            masked_filename,
+            focal_mm=focal_length,
+            focal35=focal_length_35mm,
+            make=make,
+            model=model
+        )
+
+    print(f"Processed frames saved in folder: {out_dir}")
+
+    # -- OPTIONAL DEBUG PRINT --
+    print("Extracted metadata from video:")
+    print(f"  Focal length: {focal_length}")
+    print(f"  Focal length (35mm): {focal_length_35mm}")
+    print(f"  Make: {make}, Model: {model}")
+
+    return media_info
 
 
 # -----------------------------------------------------------------------------
@@ -240,7 +347,7 @@ def laplacian_stats(frames: List[np.ndarray],
                         total=len(idxs),
                         desc="Laplacian var"))
     out.sort(key=lambda t: t[0])
-    return zip(*out)   # -> idx_list, var_list
+    return zip(*out)  # -> idx_list, var_list
 
 
 def select_frames(idxs, vars_, thresh=100., min_gap=5):
