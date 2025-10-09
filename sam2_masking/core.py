@@ -378,9 +378,39 @@ def detect_keyframes(frames, masks, ratio=0.8):
         return [], []
 
     def _mask(idx):
-        if idx in masks and masks[idx]:
-            return (masks[idx][0].cpu().numpy()[0] > 0.5).astype(np.uint8)
-        return np.zeros(frames[0].shape[:2], np.uint8)
+        mask_entry = masks.get(idx)
+        if mask_entry is None:
+            return np.zeros(frames[0].shape[:2], np.uint8)
+
+        def _as_numpy(tensor_like):
+            if tensor_like is None:
+                return None
+            if isinstance(tensor_like, torch.Tensor):
+                return tensor_like.detach().cpu().numpy()
+            if isinstance(tensor_like, dict):
+                # SAM outputs sometimes return dictionaries keyed by segmentation
+                for key in ("segmentation", "mask", "masks"):
+                    if key in tensor_like:
+                        return _as_numpy(tensor_like[key])
+                return None
+            if isinstance(tensor_like, (list, tuple)):
+                for item in tensor_like:
+                    arr = _as_numpy(item)
+                    if arr is not None:
+                        return arr
+                return None
+            return np.asarray(tensor_like)
+
+        mask_np = _as_numpy(mask_entry)
+        if mask_np is None:
+            return np.zeros(frames[0].shape[:2], np.uint8)
+
+        if mask_np.ndim == 4:
+            mask_np = mask_np[0, 0]
+        elif mask_np.ndim == 3:
+            mask_np = mask_np[0]
+
+        return (mask_np > 0.5).astype(np.uint8)
 
     orb = cv2.ORB_create()
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, True)
