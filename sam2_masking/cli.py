@@ -23,7 +23,8 @@ from .core import (
     save_processed,
     detect_keyframes,
     filter_frames_by_quality,
-
+    compute_laplacian_variances,
+    choose_quality_threshold_interactively,
 )
 
 
@@ -51,6 +52,11 @@ def parse_args():
                        "When using --quality-threshold, enforce a minimum gap "
                        "(in frame indices) between kept frames to avoid "
                        "near-duplicates."
+                   ))
+    p.add_argument("--quality-interactive", action="store_true",
+                   help=(
+                       "Plot Laplacian variance per frame and interactively "
+                       "choose the blur threshold before filtering."
                    ))
     return p.parse_args()
 
@@ -89,19 +95,35 @@ def main():
         )
         print(f"Selected {len(frames_to_save)} / {len(frames)} frames")
 
-    if args.quality_threshold is not None:
-        print(
-            "Running Laplacian variance filtering "
-            f"(threshold={args.quality_threshold:.1f}, min_gap={args.quality_min_gap}) ..."
-        )
-        frames_to_save, frame_indices = filter_frames_by_quality(
-            frames_to_save,
-            frame_indices,
-            variance_thresh=args.quality_threshold,
-            min_gap=args.quality_min_gap,
-        )
-        print(f"Kept {len(frames_to_save)} frames after blur filtering")
+    if args.quality_threshold is not None or args.quality_interactive:
+        if not frames_to_save:
+            print("No frames available for Laplacian filtering; skipping quality pass.")
+        else:
+            variances = compute_laplacian_variances(frames_to_save)
 
+            if args.quality_interactive:
+                chosen = choose_quality_threshold_interactively(
+                    variances,
+                    frame_indices,
+                    initial_threshold=args.quality_threshold,
+                )
+                args.quality_threshold = chosen
+                print(f"Using interactively chosen quality threshold: {chosen:.1f}")
+
+            if args.quality_threshold is not None:
+                print(
+                    "Running Laplacian variance filtering "
+                    f"(threshold={args.quality_threshold:.1f}, min_gap={args.quality_min_gap}) ..."
+                )
+                frames_to_save, frame_indices = filter_frames_by_quality(
+                    frames_to_save,
+                    frame_indices,
+                    variance_thresh=args.quality_threshold,
+                    min_gap=args.quality_min_gap,
+                    precomputed_variances=variances,
+                )
+                print(f"Kept {len(frames_to_save)} frames after blur filtering")
+    
     # 6. Export (original + masked + binary masks)
     save_processed(args.video, frames_to_save, masks, frame_indices=frame_indices)
 
