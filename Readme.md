@@ -157,6 +157,7 @@ docs/                   # demo GIFs / screenshots (optional)
 | Does audio survive the MOV→MP4 step? | No—OpenCV writes video‑only. |
 | How big is the “large” checkpoint? | ≈ 2 GB (base ≈ 600 MB, tiny ≈ 250 MB). |
 | RTX 20‑series support? | Yes; FP16 needs compute 7.0+. Otherwise use `--device cpu`. |
+| How do `--keyframe-threshold` and `--quality-min-gap` interact? | `--keyframe-threshold` enables ORB/BFMatcher thinning: a frame becomes a key-frame when the fraction of matches to the previous key-frame drops below the ratio. `--quality-min-gap` only affects the Laplacian blur filter, so it is ignored unless `--quality-threshold` is set; when both are used it enforces at least that many frame indices between sharp frames that pass the blur test. |
 | Official Meta support? | No—community wrapper. SAM‑2 & SAMURAI are © Meta AI. |
 
 ---
