@@ -22,6 +22,7 @@ from .core import (
     run_tracking,
     save_processed,
     detect_keyframes,
+    filter_frames_by_quality,
 
 )
 
@@ -39,6 +40,17 @@ def parse_args():
                    help=(
                        "Enable ORB/BFMatcher key-frame thinning when provided; "
                        "value is the match ratio threshold (e.g. 0.8)."
+                   ))
+    p.add_argument("--quality-threshold", type=float, default=None,
+                   help=(
+                       "Drop blurry frames by requiring a minimum Laplacian "
+                       "variance. Typical values are in the 50-150 range."
+                   ))
+    p.add_argument("--quality-min-gap", type=int, default=5,
+                   help=(
+                       "When using --quality-threshold, enforce a minimum gap "
+                       "(in frame indices) between kept frames to avoid "
+                       "near-duplicates."
                    ))
     return p.parse_args()
 
@@ -67,7 +79,7 @@ def main():
     masks = run_tracking(in_path, bbox, predictor, len(frames), args.device)
 
     frames_to_save = frames
-    frame_indices = None
+    frame_indices = list(range(len(frames)))
     if args.keyframe_threshold is not None:
         print(f"Running key-frame detection (threshold={args.keyframe_threshold:.2f}) ...")
         frames_to_save, frame_indices = detect_keyframes(
@@ -76,6 +88,19 @@ def main():
             ratio=args.keyframe_threshold,
         )
         print(f"Selected {len(frames_to_save)} / {len(frames)} frames")
+
+    if args.quality_threshold is not None:
+        print(
+            "Running Laplacian variance filtering "
+            f"(threshold={args.quality_threshold:.1f}, min_gap={args.quality_min_gap}) ..."
+        )
+        frames_to_save, frame_indices = filter_frames_by_quality(
+            frames_to_save,
+            frame_indices,
+            variance_thresh=args.quality_threshold,
+            min_gap=args.quality_min_gap,
+        )
+        print(f"Kept {len(frames_to_save)} frames after blur filtering")
 
     # 6. Export (original + masked + binary masks)
     save_processed(args.video, frames_to_save, masks, frame_indices=frame_indices)

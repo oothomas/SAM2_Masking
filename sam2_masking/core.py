@@ -435,3 +435,58 @@ def detect_keyframes(frames, masks, ratio=0.8):
             kidx.append(idx)
             ref_kp, ref_des = kp, des
     return kf, kidx
+
+
+def filter_frames_by_quality(
+        frames: List[np.ndarray],
+        frame_indices: Optional[List[int]] = None,
+        variance_thresh: float = 100.0,
+        min_gap: int = 5) -> Tuple[List[np.ndarray], List[int]]:
+    """Keep only frames with sufficient Laplacian variance (low blur).
+
+    Parameters
+    ----------
+    frames:
+        Frames already selected by a previous stage (e.g. key-frame thinning).
+    frame_indices:
+        Original frame indices aligned with ``frames``. If ``None`` the
+        indices ``0..len(frames)-1`` are assumed.
+    variance_thresh:
+        Minimum Laplacian variance required for a frame to be kept. Higher
+        values favour sharper frames.
+    min_gap:
+        Minimum gap (in original frame indices) that must separate two kept
+        frames. This prevents near-duplicates when several consecutive frames
+        exceed the sharpness threshold.
+
+    Returns
+    -------
+    filtered_frames, filtered_indices
+        Frames and their original indices that satisfy the blur filter.
+    """
+
+    if not frames:
+        return [], []
+
+    if frame_indices is None:
+        frame_indices = list(range(len(frames)))
+
+    kept_frames: List[np.ndarray] = []
+    kept_indices: List[int] = []
+    last_kept = -1_000
+
+    for frame, original_idx in zip(frames, frame_indices):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+
+        if variance < variance_thresh:
+            continue
+
+        if original_idx - last_kept < min_gap:
+            continue
+
+        kept_frames.append(frame)
+        kept_indices.append(original_idx)
+        last_kept = original_idx
+
+    return kept_frames, kept_indices
