@@ -21,6 +21,7 @@ from .core import (
     build_samurai,
     run_tracking,
     save_processed,
+    detect_keyframes,
 
 )
 
@@ -34,6 +35,11 @@ def parse_args():
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--no-convert", action="store_true",
                    help="Skip .mov -> .mp4 conversion even if input is .mov")
+    p.add_argument("--keyframe-threshold", type=float, default=None,
+                   help=(
+                       "Enable ORB/BFMatcher key-frame thinning when provided; "
+                       "value is the match ratio threshold (e.g. 0.8)."
+                   ))
     return p.parse_args()
 
 
@@ -60,8 +66,19 @@ def main():
     # 5. Tracking
     masks = run_tracking(in_path, bbox, predictor, len(frames), args.device)
 
+    frames_to_save = frames
+    frame_indices = None
+    if args.keyframe_threshold is not None:
+        print(f"Running key-frame detection (threshold={args.keyframe_threshold:.2f}) ...")
+        frames_to_save, frame_indices = detect_keyframes(
+            frames,
+            masks,
+            ratio=args.keyframe_threshold,
+        )
+        print(f"Selected {len(frames_to_save)} / {len(frames)} frames")
+
     # 6. Export (original + masked + binary masks)
-    save_processed(args.video, frames, masks)
+    save_processed(args.video, frames_to_save, masks, frame_indices=frame_indices)
 
     print("🎉 Done!")
 

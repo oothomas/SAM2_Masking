@@ -7,7 +7,7 @@ import os
 import os.path as osp
 import cv2
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from contextlib import nullcontext
 from concurrent.futures import ProcessPoolExecutor
 
@@ -195,13 +195,21 @@ def _metadata_from_video(path: str):
     return focal_mm, focal35, make, model
 
 
-def save_processed(video_path, frames, all_masks):
+def save_processed(video_path,
+                   frames,
+                   all_masks,
+                   frame_indices: Optional[List[int]] = None):
     """
     Given:
       - video_path: path to the input .mp4 (or .mov) file.
-      - frames: a list of frames (images in BGR format).
+      - frames: a list of frames (images in BGR format). This list can be a
+                subset of the original timeline when key-frame thinning is
+                enabled.
       - all_masks: a dict mapping frame indices to lists of mask tensors.
                    We assume each list contains at least one mask; if none, the frame is unmasked.
+      - frame_indices: optional list of indices representing the position of
+                       each frame within the original timeline. When omitted
+                       the frames are assumed to be sequential starting at 0.
 
     This function creates an output folder (named after the video file's stem, in the same directory as the video)
     with two subfolders:
@@ -254,8 +262,9 @@ def save_processed(video_path, frames, all_masks):
 
     # 4) Iterate through frames and save them
     for idx, frame in enumerate(frames):
+        frame_idx = frame_indices[idx] if frame_indices is not None else idx
         # Build the base name: e.g. video_stem_000001
-        out_basename = f"{video_stem}_{idx:06d}"
+        out_basename = f"{video_stem}_{frame_idx:06d}"
 
         # ---------------------
         # (A) Save the original frame
@@ -275,8 +284,8 @@ def save_processed(video_path, frames, all_masks):
         # ---------------------
         # (B) Get or build the mask
         # ---------------------
-        if idx in all_masks and len(all_masks[idx]) > 0:
-            mask_tensor = all_masks[idx][0]
+        if frame_idx in all_masks and len(all_masks[frame_idx]) > 0:
+            mask_tensor = all_masks[frame_idx][0]
             # Convert from PyTorch tensor ([1, H, W]) to a numpy array (H, W)
             mask_np = mask_tensor.cpu().numpy()[0]
             # Threshold the mask to create a binary mask (values 0 or 1)
@@ -377,7 +386,13 @@ def detect_keyframes(frames, masks, ratio=0.8):
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, True)
     kf, kidx = [frames[0]], [0]
     ref_kp, ref_des = orb.detectAndCompute(frames[0], _mask(0))
-    for idx, fr in enumerate(frames[1:], 1):
+    iterable = enumerate(frames[1:], 1)
+    if len(frames) > 1:
+        iterable = tqdm(iterable,
+                        total=len(frames) - 1,
+                        desc="Key-frame thinning",
+                        leave=False)
+    for idx, fr in iterable:
         kp, des = orb.detectAndCompute(fr, _mask(idx))
         if not (ref_des is not None and des is not None and ref_kp):
             kf.append(fr)
